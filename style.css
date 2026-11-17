@@ -149,6 +149,27 @@ fieldset .dash { color: var(--muted); }
 .check { display: flex; gap: 8px; align-items: center; padding: 4px 2px; }
 .hint { margin: 4px 2px 0; color: var(--muted); font-size: 12px; }
 
+/* Sync */
+.topbar h1 { display: flex; align-items: center; gap: 8px; }
+.sync-dot { width: 14px; height: 14px; border-radius: 50%; border: 0; padding: 0; cursor: pointer; background: #9aa3ad; }
+.sync-dot.ok { background: #2e9e5b; }
+.sync-dot.busy { background: #e0a100; animation: pulse 1s infinite alternate; }
+.sync-dot.err { background: #d92d20; }
+@keyframes pulse { to { opacity: .35; } }
+.sync-box { display: grid; gap: 6px; padding-bottom: 8px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+#syncText { font-size: 13px; color: var(--muted); padding: 0 2px; }
+dialog {
+  border: 1px solid var(--line); border-radius: 14px; background: var(--card); color: var(--ink);
+  width: min(440px, calc(100vw - 24px)); padding: 18px;
+}
+dialog::backdrop { background: rgba(0,0,0,.45); }
+dialog h3 { margin: 0 0 8px; }
+dialog p, dialog ol { margin: 0 0 10px; font-size: 14px; }
+dialog ol { padding-left: 20px; }
+dialog a { color: inherit; font-weight: 600; }
+dialog input { width: 100%; }
+.dlg-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+
 /* Preview overlay */
 .preview {
   position: fixed; inset: 0; z-index: 20; background: #5b6168;

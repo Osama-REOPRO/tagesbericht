@@ -14,9 +14,10 @@ function load() {
   } catch (e) { /* ignore */ }
   return { monteur: '', days: {}, showWeekend: false, printEmpty: false };
 }
-function save() {
+function save(fromSync) {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
   catch (e) { alert('Speichern fehlgeschlagen: ' + e.message); }
+  if (!fromSync) scheduleSync();
 }
 let state = load();
 
@@ -62,10 +63,11 @@ function ensureDay(iso) {
   if (!state.days[iso]) state.days[iso] = { rows: [] };
   return state.days[iso];
 }
+function touch(iso) { ensureDay(iso).u = Date.now(); }
 const dayHasData = iso => (state.days[iso]?.rows || []).some(rowHasData);
 function cleanupDay(iso) {
   const d = state.days[iso];
-  if (d && !d.rows.some(rowHasData)) delete state.days[iso];
+  if (d && !d.u && !d.rows.some(rowHasData)) delete state.days[iso];
 }
 
 /* ---------- UI state ---------- */
@@ -143,7 +145,7 @@ function buildRow(r, i) {
       if (f === 'az') r.azManual = !!el.value;
       if ((f === 'av' || f === 'ab') && !r.fzManual) { r.fz = diffHours(r.av, r.ab); inputs.fz.value = r.fz; }
       if ((f === 'wv' || f === 'wb') && !r.azManual) { r.az = diffHours(r.wv, r.wb); inputs.az.value = r.az; }
-      ensureDay(curDate);
+      touch(curDate);
       save();
       renderTotals();
       markTab();
@@ -153,7 +155,7 @@ function buildRow(r, i) {
     const day = ensureDay(curDate);
     if (rowHasData(r) && !confirm('Zeile löschen?')) return;
     day.rows.splice(i, 1);
-    cleanupDay(curDate);
+    touch(curDate);
     save();
     renderAll();
   };
@@ -161,6 +163,7 @@ function buildRow(r, i) {
     const day = ensureDay(curDate);
     if (day.rows.length >= MAX_ROWS) return alert(`Maximal ${MAX_ROWS} Zeilen pro Tag.`);
     day.rows.splice(i + 1, 0, { ...r });
+    touch(curDate);
     save();
     renderAll();
   };
@@ -282,7 +285,8 @@ function importData(file) {
       if (!data || typeof data.days !== 'object') throw new Error('Ungültige Datei');
       const n = Object.keys(data.days).length;
       if (!confirm(`${n} Tage importieren? Vorhandene Tage mit gleichem Datum werden überschrieben.`)) return;
-      Object.assign(state.days, data.days);
+      const now = Date.now();
+      for (const [iso, day] of Object.entries(data.days)) state.days[iso] = { ...day, u: now };
       if (data.monteur && !state.monteur) state.monteur = data.monteur;
       save();
       $('monteur').value = state.monteur;
@@ -295,7 +299,7 @@ function importData(file) {
 
 /* ---------- wiring ---------- */
 $('monteur').value = state.monteur;
-$('monteur').addEventListener('input', e => { state.monteur = e.target.value; save(); });
+$('monteur').addEventListener('input', e => { state.monteur = e.target.value; state.monteurU = Date.now(); save(); });
 $('showWeekend').checked = state.showWeekend;
 $('showWeekend').addEventListener('change', e => { state.showWeekend = e.target.checked; save(); renderAll(); });
 $('printEmpty').checked = state.printEmpty;
@@ -321,12 +325,13 @@ $('copyPrev').onclick = () => {
   if (!src) return alert('Kein vorheriger Tag mit Einträgen gefunden.');
   if (dayHasData(curDate) && !confirm('Aktuelle Einträge durch die vom ' + fmtDate(fromISO(src)) + ' ersetzen?')) return;
   ensureDay(curDate).rows = getDay(src).rows.filter(rowHasData).map(r => ({ ...r }));
+  touch(curDate);
   save();
   renderAll();
 };
 $('clearDay').onclick = () => {
   if (!dayHasData(curDate) || !confirm('Alle Einträge dieses Tages löschen?')) return;
-  delete state.days[curDate];
+  state.days[curDate] = { rows: [], u: Date.now() };
   save();
   renderAll();
 };
@@ -352,4 +357,168 @@ window.addEventListener('afterprint', () => { $('print-area').innerHTML = ''; })
 // Remove blank placeholder rows from storage when leaving the page
 window.addEventListener('pagehide', () => { Object.keys(state.days).forEach(cleanupDay); save(); });
 
+
+/* ---------- sync via private GitHub Gist ---------- */
+const SYNC_KEY = 'tagesbericht.sync';
+const GIST_FILE = 'tagesbericht-data.json';
+let syncCfg = (() => { try { return JSON.parse(localStorage.getItem(SYNC_KEY)) || {}; } catch (e) { return {}; } })();
+let syncTimer = null, syncing = false, syncAgain = false;
+const saveSyncCfg = () => localStorage.setItem(SYNC_KEY, JSON.stringify(syncCfg));
+
+function scheduleSync() {
+  if (!syncCfg.token) return;
+  clearTimeout(syncTimer);
+  setSyncStatus('pending');
+  syncTimer = setTimeout(sync, 1500);
+}
+
+async function gh(method, path, body) {
+  const res = await fetch('https://api.github.com' + path, {
+    method, cache: 'no-store',
+    headers: {
+      Authorization: 'Bearer ' + syncCfg.token,
+      Accept: 'application/vnd.github+json',
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (res.status === 401) throw new Error('Token ungültig oder abgelaufen');
+  if (res.status === 404) { const e = new Error('Gist nicht gefunden'); e.notFound = true; throw e; }
+  if (res.status === 403) throw new Error('Kein Zugriff auf Gists (Token braucht „gist“-Berechtigung)');
+  if (!res.ok) throw new Error('GitHub-Fehler ' + res.status);
+  return res.json();
+}
+
+function syncPayload() {
+  const days = {};
+  for (const [iso, d] of Object.entries(state.days)) if (d.u || d.rows.some(rowHasData)) days[iso] = d;
+  return JSON.stringify({ v: 1, monteur: state.monteur, monteurU: state.monteurU || 0, days });
+}
+
+async function findOrCreateGist() {
+  for (let page = 1; page <= 10; page++) {
+    const list = await gh('GET', `/gists?per_page=100&page=${page}`);
+    const g = list.find(x => x.files && x.files[GIST_FILE]);
+    if (g) return g.id;
+    if (list.length < 100) break;
+  }
+  const g = await gh('POST', '/gists', {
+    description: 'Tagesbericht Sync (automatisch erstellt)',
+    public: false,
+    files: { [GIST_FILE]: { content: syncPayload() } },
+  });
+  return g.id;
+}
+
+function mergeRemote(remote) {
+  let changedLocal = false, needPush = false, curChanged = false;
+  const rdays = remote.days || {};
+  const all = new Set([...Object.keys(state.days), ...Object.keys(rdays)]);
+  for (const iso of all) {
+    const l = state.days[iso], r = rdays[iso];
+    const lu = l?.u || 0, ru = r?.u || 0;
+    if (r && ru > lu) {
+      state.days[iso] = r; changedLocal = true;
+      if (iso === curDate) curChanged = true;
+    } else if (l && lu > ru) needPush = true;
+  }
+  if ((remote.monteurU || 0) > (state.monteurU || 0)) {
+    state.monteur = remote.monteur || ''; state.monteurU = remote.monteurU; changedLocal = true;
+    $('monteur').value = state.monteur;
+  } else if ((state.monteurU || 0) > (remote.monteurU || 0)) needPush = true;
+  return { changedLocal, needPush, curChanged };
+}
+
+async function sync() {
+  if (!syncCfg.token) return;
+  if (syncing) { syncAgain = true; return; }
+  syncing = true;
+  clearTimeout(syncTimer); syncTimer = null;
+  setSyncStatus('busy');
+  try {
+    if (!syncCfg.gistId) { syncCfg.gistId = await findOrCreateGist(); saveSyncCfg(); }
+    const g = await gh('GET', `/gists/${syncCfg.gistId}`);
+    const f = g.files[GIST_FILE];
+    let remote = { days: {} };
+    if (f) {
+      const text = f.truncated ? await (await fetch(f.raw_url, { cache: 'no-store' })).text() : f.content;
+      try { remote = JSON.parse(text); } catch (e) { /* corrupt remote: overwrite with local */ }
+    }
+    const { changedLocal, needPush, curChanged } = mergeRemote(remote);
+    if (changedLocal) {
+      save(true);
+      renderWeek();
+      if (curChanged) {
+        const el = document.activeElement;
+        const card = rowsEl.contains(el) ? el.closest('.row-card') : null;
+        const idx = card ? [...rowsEl.children].indexOf(card) : -1, f = el?.dataset?.f;
+        renderDay();
+        if (idx >= 0 && f) rowsEl.children[idx]?.querySelector(`[data-f="${f}"]`)?.focus();
+      } else renderTotals();
+    }
+    if (needPush || !f) {
+      await gh('PATCH', `/gists/${syncCfg.gistId}`, { files: { [GIST_FILE]: { content: syncPayload() } } });
+    }
+    syncCfg.last = Date.now(); saveSyncCfg();
+    setSyncStatus('ok');
+  } catch (e) {
+    if (e.notFound && syncCfg.gistId) { syncCfg.gistId = null; saveSyncCfg(); syncAgain = true; }
+    setSyncStatus('error', e.message);
+  } finally {
+    syncing = false;
+    if (syncAgain) { syncAgain = false; sync(); }
+  }
+}
+
+function setSyncStatus(st, msg) {
+  const dot = $('syncDot'), txt = $('syncText');
+  if (!syncCfg.token) {
+    dot.className = 'sync-dot off'; dot.title = 'Sync aus';
+    txt.textContent = 'Sync ist aus';
+    $('syncSetup').hidden = false; $('syncNow').hidden = true; $('syncOff').hidden = true;
+    return;
+  }
+  $('syncSetup').hidden = true; $('syncNow').hidden = false; $('syncOff').hidden = false;
+  const last = syncCfg.last ? new Date(syncCfg.last) : null;
+  const lastTxt = last ? `${pad(last.getHours())}:${pad(last.getMinutes())}` : '–';
+  const map = {
+    ok: ['ok', `Synchronisiert (${lastTxt})`],
+    busy: ['busy', 'Synchronisiere …'],
+    pending: ['busy', 'Änderungen warten …'],
+    error: ['err', 'Sync-Fehler: ' + (msg || '')],
+  };
+  const [cls, label] = map[st] || map.ok;
+  dot.className = 'sync-dot ' + cls; dot.title = label; txt.textContent = label;
+}
+
+function initSync() {
+  $('syncSetup').onclick = () => { closeMenu(); $('tokenInput').value = ''; $('syncDialog').showModal(); };
+  $('syncCancel').onclick = () => $('syncDialog').close();
+  $('syncForm').onsubmit = async e => {
+    e.preventDefault();
+    const token = $('tokenInput').value.trim();
+    if (!token) return;
+    syncCfg = { token };
+    saveSyncCfg();
+    $('syncDialog').close();
+    await sync();
+    if ($('syncDot').classList.contains('err')) alert($('syncText').textContent);
+  };
+  $('syncNow').onclick = () => { closeMenu(); sync(); };
+  $('syncOff').onclick = () => {
+    if (!confirm('Sync auf diesem Gerät ausschalten? Die Daten bleiben erhalten.')) return;
+    syncCfg = {}; saveSyncCfg(); closeMenu(); setSyncStatus();
+  };
+  $('syncDot').onclick = () => { if (syncCfg.token) sync(); else $('syncSetup').click(); };
+  document.addEventListener('visibilitychange', () => {
+    if (!syncCfg.token) return;
+    if (document.visibilityState === 'visible') sync();
+    else if (syncTimer) sync(); // push pending changes before the app goes to background
+  });
+  window.addEventListener('online', () => sync());
+  setSyncStatus('ok');
+  sync();
+}
+
 renderAll();
+initSync();

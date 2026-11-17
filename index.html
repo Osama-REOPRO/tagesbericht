@@ -16,7 +16,7 @@
 
 <div id="app">
   <header class="topbar">
-    <h1>Tagesbericht</h1>
+    <h1>Tagesbericht <button class="sync-dot off" id="syncDot" aria-label="Sync-Status"></button></h1>
     <label class="monteur">
       <span>Monteur</span>
       <input id="monteur" type="text" autocomplete="name" placeholder="Dein Name">
@@ -57,13 +57,19 @@
     <details class="more">
       <summary class="btn ghost">⋯</summary>
       <div class="menu">
+        <div class="sync-box">
+          <div id="syncText">Sync ist aus</div>
+          <button class="btn ghost" id="syncSetup">Sync einrichten (Laptop ↔ Handy)</button>
+          <button class="btn ghost" id="syncNow" hidden>Jetzt synchronisieren</button>
+          <button class="btn ghost danger" id="syncOff" hidden>Sync ausschalten</button>
+        </div>
         <label class="check"><input type="checkbox" id="showWeekend"> Sa/So anzeigen</label>
         <label class="check"><input type="checkbox" id="printEmpty"> Leere Werktage mitdrucken</label>
         <button class="btn ghost" id="previewWeek">Vorschau Woche</button>
         <button class="btn ghost" id="exportBtn">Backup exportieren</button>
         <button class="btn ghost" id="importBtn">Backup importieren</button>
         <input type="file" id="importFile" accept="application/json,.json" hidden>
-        <p class="hint">Daten werden nur in diesem Browser gespeichert. Mit Backup kannst du sie auf ein anderes Gerät übertragen.</p>
+        <p class="hint">Ohne Sync bleiben die Daten nur in diesem Browser. Backup = Datei zum Übertragen/Sichern.</p>
       </div>
     </details>
   </footer>
@@ -79,6 +85,23 @@
   </div>
   <div class="preview-pages" id="previewPages"></div>
 </div>
+
+<dialog id="syncDialog">
+  <form id="syncForm" method="dialog">
+    <h3>Sync einrichten</h3>
+    <p>Die Daten werden in einem <b>privaten Gist</b> in deinem GitHub-Konto gespeichert. Auf jedem Gerät (Laptop, Handy) einmal denselben Token eintragen.</p>
+    <ol>
+      <li><a href="https://github.com/settings/tokens/new?scopes=gist&amp;description=Tagesbericht%20Sync" target="_blank" rel="noopener">Token auf GitHub erstellen</a> – nur Haken bei <b>gist</b>, Ablauf z.&nbsp;B. „No expiration“.</li>
+      <li>Token kopieren und hier einfügen:</li>
+    </ol>
+    <input id="tokenInput" type="password" autocomplete="off" placeholder="ghp_…" required>
+    <p class="hint">Der Token bleibt nur auf diesem Gerät gespeichert.</p>
+    <div class="dlg-actions">
+      <button type="button" class="btn ghost" id="syncCancel">Abbrechen</button>
+      <button type="submit" class="btn primary">Verbinden</button>
+    </div>
+  </form>
+</dialog>
 
 <div id="print-area"></div>
 
