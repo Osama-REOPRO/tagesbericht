@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tagesbericht</title>
+<meta name="theme-color" content="#3d4a5c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Tagesbericht">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="app">
+  <header class="topbar">
+    <h1>Tagesbericht</h1>
+    <label class="monteur">
+      <span>Monteur</span>
+      <input id="monteur" type="text" autocomplete="name" placeholder="Dein Name">
+    </label>
+  </header>
+
+  <section class="weekbar">
+    <button class="icon-btn" id="prevWeek" aria-label="Vorherige Woche">‹</button>
+    <div class="weekinfo">
+      <div class="kw" id="kwLabel">KW</div>
+      <div class="range" id="rangeLabel"></div>
+    </div>
+    <button class="icon-btn" id="nextWeek" aria-label="Nächste Woche">›</button>
+    <button class="btn small ghost" id="todayBtn">Heute</button>
+  </section>
+
+  <nav class="daytabs" id="dayTabs"></nav>
+
+  <main class="day">
+    <div class="dayhead">
+      <h2 id="dayTitle"></h2>
+      <div class="totals" id="dayTotals"></div>
+    </div>
+
+    <div id="rows"></div>
+
+    <div class="row-actions">
+      <button class="btn" id="addRow">+ Zeile hinzufügen</button>
+      <button class="btn ghost" id="copyPrev">Vortag kopieren</button>
+      <button class="btn ghost danger" id="clearDay">Tag leeren</button>
+    </div>
+  </main>
+
+  <footer class="actions">
+    <button class="btn ghost" id="previewDay">Vorschau</button>
+    <button class="btn" id="printDay">Tag → PDF</button>
+    <button class="btn primary" id="printWeek">Woche → PDF</button>
+    <details class="more">
+      <summary class="btn ghost">⋯</summary>
+      <div class="menu">
+        <label class="check"><input type="checkbox" id="showWeekend"> Sa/So anzeigen</label>
+        <label class="check"><input type="checkbox" id="printEmpty"> Leere Werktage mitdrucken</label>
+        <button class="btn ghost" id="previewWeek">Vorschau Woche</button>
+        <button class="btn ghost" id="exportBtn">Backup exportieren</button>
+        <button class="btn ghost" id="importBtn">Backup importieren</button>
+        <input type="file" id="importFile" accept="application/json,.json" hidden>
+        <p class="hint">Daten werden nur in diesem Browser gespeichert. Mit Backup kannst du sie auf ein anderes Gerät übertragen.</p>
+      </div>
+    </details>
+  </footer>
+</div>
+
+<div id="preview" class="preview" hidden>
+  <div class="preview-bar">
+    <span id="previewTitle">Vorschau</span>
+    <div>
+      <button class="btn primary small" id="previewPrint">PDF / Drucken</button>
+      <button class="btn small ghost" id="previewClose">Schließen</button>
+    </div>
+  </div>
+  <div class="preview-pages" id="previewPages"></div>
+</div>
+
+<div id="print-area"></div>
+
+<template id="rowTpl">
+  <div class="row-card">
+    <div class="rc-head">
+      <span class="num"></span>
+      <input class="f-desc" type="text" placeholder="Kunde / Ort / Tätigkeit" data-f="desc">
+      <select class="f-type" data-f="type" aria-label="Art">
+        <option value="">Art</option>
+        <option value="W">W – Wartung</option>
+        <option value="R">R – Reparatur</option>
+        <option value="M">M – Montage</option>
+        <option value="A">A – Aufmaß</option>
+        <option value="S">S – Schadensaufnahme</option>
+        <option value="N">N – Neubau</option>
+        <option value="WK">WK – Werkstatt</option>
+      </select>
+      <button class="icon-btn small dup" title="Zeile duplizieren" aria-label="Zeile duplizieren">⧉</button>
+      <button class="icon-btn small del" title="Zeile löschen" aria-label="Zeile löschen">✕</button>
+    </div>
+    <div class="rc-body">
+      <fieldset>
+        <legend>Anfahrt</legend>
+        <input type="time" data-f="av" aria-label="Anfahrt von">
+        <span class="dash">–</span>
+        <input type="time" data-f="ab" aria-label="Anfahrt bis">
+        <label class="hours"><input type="text" inputmode="decimal" data-f="fz" aria-label="FZ h"><span>h</span></label>
+      </fieldset>
+      <fieldset>
+        <legend>Arbeitszeit</legend>
+        <input type="time" data-f="wv" aria-label="Arbeitszeit von">
+        <span class="dash">–</span>
+        <input type="time" data-f="wb" aria-label="Arbeitszeit bis">
+        <label class="hours"><input type="text" inputmode="decimal" data-f="az" aria-label="AZ h"><span>h</span></label>
+      </fieldset>
+      <fieldset class="ausl">
+        <legend>Auslöse</legend>
+        <input type="text" data-f="ausl" aria-label="Auslöse">
+      </fieldset>
+    </div>
+  </div>
+</template>
+
+<script src="app.js"></script>
+</body>
+</html>
